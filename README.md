@@ -1,6 +1,6 @@
 # 🎈 Ollama PDF-based Retrieval-Augmented Generation (RAG) with Streamlit
 
-This **Streamlit** application enables you to upload PDF documents, process them into vector embeddings, and interact with the content through a question-answering interface powered by **Ollama's Llama 3** language models. The system uses **Retrieval-Augmented Generation (RAG)** techniques to generate answers based on context derived from the uploaded PDF document.
+This **Streamlit** application enables you to upload PDF documents, process them into vector embeddings, and interact with the content through a question-answering interface powered by **Ollama's Llama 3.1 8B** language models. The system uses **Retrieval-Augmented Generation (RAG)** techniques to generate answers based on context derived from the uploaded PDF document.
 
 With this tool, users can seamlessly:
 - Upload PDFs
@@ -30,6 +30,7 @@ With this tool, users can seamlessly:
 - **Chroma**: For handling vector embeddings and search queries.
 - **PDFPlumber**: To extract and display PDF pages as images.
 - **SQLite**: For session management (via **pysqlite3**).
+- **Docker**: For running Ollama and llama3.1 model.
 
 ---
 
@@ -39,15 +40,15 @@ With this tool, users can seamlessly:
 
 Make sure you have the following installed:
 
-- **Python 3.8+**
+- **Python 3.10.0**
 - **Docker** (optional, for Docker installation)
 - **Git**
 
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/ollama-pdf-rag-streamlit.git
-cd ollama-pdf-rag-streamlit
+git clone https://github.com/yourusername/Q-A-Retrieval-System.git
+cd Q-A-Retrieval-System
 ```
 
 ### 3. Install Ollama
@@ -67,6 +68,7 @@ Download and install Ollama from [ollama.com](https://ollama.com/)
 ```bash
 # Text Embedding Models
 ollama pull nomic-embed-text
+# For late Chunking
 ollama pull jina/jina-embeddings-v2-base-en
 
 # Language Models
@@ -84,7 +86,7 @@ pip install -r requirements.txt
 Start the Streamlit app:
 
 ```bash
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 ## 🧑‍💻 Usage
