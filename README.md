@@ -50,16 +50,16 @@ Clone this repository and install the required dependencies via `pip`:
 git clone https://github.com/yourusername/ollama-pdf-rag-streamlit.git
 cd ollama-pdf-rag-streamlit
 pip install -r requirements.txt
-
+```
 ### 3. Install and Set Up Ollama
 
 1. **Download and install Ollama** from [ollama.com](https://ollama.com/).
-2. Once Ollama is installed, run **Ollama** locally to serve the **Llama 3** model:
+2. Once Ollama is installed, run **Ollama** locally to serve the **Llama 3.1-8b-Instruct** model:
 
    ```bash
    ollama run
+   ```
 
-```
 ### 3. Install and Set Up Ollama
 
 1. **Download and install Ollama** from [ollama.com](https://ollama.com/).
