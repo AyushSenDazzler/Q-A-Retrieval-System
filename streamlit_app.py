@@ -1,292 +1,255 @@
-"""
-Streamlit application for PDF-based Retrieval-Augmented Generation (RAG) using Ollama + LangChain.
-
-This application allows users to upload a PDF, process it,
-and then ask questions about the content using a selected language model.
-"""
-
 import streamlit as st
 import logging
 import os
-
-# Set the API key as an environment variable
-os.environ["LANGSMITH_API_KEY"] = "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"
 import tempfile
 import shutil
 import pdfplumber
 import ollama
+import time
 
-from langchain_community.document_loaders import UnstructuredPDFLoader
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-__import__('pysqlite3')
-import pysqlite3 # type: ignore
-import sys
-sys.modules['sqlite3'] = sys.modules["pysqlite3"]
-
 from langchain_community.vectorstores import Chroma
 from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_community.chat_models import ChatOllama
 from langchain_core.runnables import RunnablePassthrough
 from langchain.retrievers.multi_query import MultiQueryRetriever
-from typing import List, Tuple, Dict, Any, Optional
-from langchain_community.llms import Ollama # type: ignore
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.llms import Ollama
 
-# Streamlit page configuration
-st.set_page_config(
-    page_title="Ollama PDF RAG Streamlit UI",
-    page_icon="🎈",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+from typing import List, Dict, Any, Generator
 
-# Logging configuration
+# Logging Configuration
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(_name_)
+
+# Streamlit Page Configuration
+st.set_page_config(
+    page_title="🔍 Ollama PDF RAG Explorer",
+    page_icon="📄",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-logger = logging.getLogger(__name__)
-
-
-@st.cache_resource(show_spinner=True)
-def extract_model_names(
-    models_info: Dict[str, List[Dict[str, Any]]],
-) -> Tuple[str, ...]:
-    """
-    Extract model names from the provided models information.
-
-    Args:
-        models_info (Dict[str, List[Dict[str, Any]]]): Dictionary containing information about available models.
-
-    Returns:
-        Tuple[str, ...]: A tuple of model names.
-    """
-    logger.info("Extracting model names from models_info")
-    model_names = tuple(model["name"] for model in models_info["models"])
-    logger.info(f"Extracted model names: {model_names}")
-    return model_names
-
-
-def create_vector_db(file_upload) -> Chroma:
-    """
-    Create a vector database from an uploaded PDF file.
-
-    Args:
-        file_upload (st.UploadedFile): Streamlit file upload object containing the PDF.
-
-    Returns:
-        Chroma: A vector store containing the processed document chunks.
-    """
-    logger.info(f"Creating vector DB from file upload: {file_upload.name}")
-    temp_dir = tempfile.mkdtemp()
-
-    path = os.path.join(temp_dir, file_upload.name)
-    with open(path, "wb") as f:
-        f.write(file_upload.getvalue())
-        logger.info(f"File saved to temporary path: {path}")
-        loader = PyPDFLoader(path)
-        data = loader.load_and_split()
-
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
-    chunks = text_splitter.split_documents(data)
-    logger.info("Document split into chunks")
-
-    embeddings = OllamaEmbeddings(base_url = 'http://localhost:11434/', model="nomic-embed-text", show_progress=True)
-    vector_db = Chroma.from_documents(
-        documents=chunks, embedding=embeddings, collection_name="myRAG"
-    )
-    logger.info("Vector DB created")
-
-    shutil.rmtree(temp_dir)
-    logger.info(f"Temporary directory {temp_dir} removed")
-    return vector_db
-
-
-def process_question(question: str, vector_db: Chroma, selected_model: str) -> str:
-    """
-    Process a user question using the vector database and selected language model.
-
-    Args:
-        question (str): The user's question.
-        vector_db (Chroma): The vector database containing document embeddings.
-        selected_model (str): The name of the selected language model.
-
-    Returns:
-        str: The generated response to the user's question.
-    """
-    logger.info(f"""Processing question: {
-                question} using model: {selected_model}""")
-    # LLM from Ollama
-    local_model = "llama3.1"
-
-    llm = Ollama(model=local_model)
-    QUERY_PROMPT = PromptTemplate(
-        input_variables=["question"],
-        template="""You are an AI language model assistant. Your task is to generate 3
-        different versions of the given user question to retrieve relevant documents from
-        a vector database. By generating multiple perspectives on the user question, your
-        goal is to help the user overcome some of the limitations of the distance-based
-        similarity search. Provide these alternative questions separated by newlines.
-        Original question: {question}""",
-    )
-
-    retriever = MultiQueryRetriever.from_llm(
-        vector_db.as_retriever(), llm, prompt=QUERY_PROMPT
-    )
-
-    template = """Answer the question based ONLY on the following context:
-    {context}
-    Question: {question}
-    If you don't know the answer, just say that you don't know, don't try to make up an answer.
-    Only provide the answer from the {context}, nothing else.
-    Add snippets of the context you used to answer the question.
-    """
-
-    prompt = ChatPromptTemplate.from_template(template)
-
-    chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-
-    response = chain.invoke(question)
-    logger.info("Question processed and response generated")
-    return response
-
-
-@st.cache_data
-def extract_all_pages_as_images(file_upload) -> List[Any]:
-    """
-    Extract all pages from a PDF file as images.
-
-    Args:
-        file_upload (st.UploadedFile): Streamlit file upload object containing the PDF.
-
-    Returns:
-        List[Any]: A list of image objects representing each page of the PDF.
-    """
-    logger.info(f"""Extracting all pages as images from file: {
-                file_upload.name}""")
-    pdf_pages = []
-    with pdfplumber.open(file_upload) as pdf:
-        pdf_pages = [page.to_image().original for page in pdf.pages]
-    logger.info("PDF pages extracted as images")
-    return pdf_pages
-
-
-def delete_vector_db(vector_db: Optional[Chroma]) -> None:
-    """
-    Delete the vector database and clear related session state.
-
-    Args:
-        vector_db (Optional[Chroma]): The vector database to be deleted.
-    """
-    logger.info("Deleting vector DB")
-    if vector_db is not None:
-        vector_db.delete_collection()
-        st.session_state.pop("pdf_pages", None)
-        st.session_state.pop("file_upload", None)
-        st.session_state.pop("vector_db", None)
-        st.success("Collection and temporary files deleted successfully.")
-        logger.info("Vector DB and related session state cleared")
-        st.rerun()
-    else:
-        st.error("No vector database found to delete.")
-        logger.warning("Attempted to delete vector DB, but none was found")
-
-
-def main() -> None:
-    """
-    Main function to run the Streamlit application.
-
-    This function sets up the user interface, handles file uploads,
-    processes user queries, and displays results.
-    """
-    st.subheader("🧠 Ollama PDF RAG playground", divider="gray", anchor=False)
-
-    models_info = ollama.list()
-    available_models = extract_model_names(models_info)
-
-    col1, col2 = st.columns([1.5, 2])
-
-    if "messages" not in st.session_state:
-        st.session_state["messages"] = []
-
-    if "vector_db" not in st.session_state:
-        st.session_state["vector_db"] = None
-
-    if available_models:
-        selected_model = col2.selectbox(
-            "Pick a model available locally on your system ↓", available_models
+class RAGProcessor:
+    def _init_(self, model_name: str = "llama3.1"):
+        """
+        Initialize RAG processor with embedding and language models
+        
+        Args:
+            model_name (str): Name of the Ollama model to use
+        """
+        self.model_name = model_name
+        self.embeddings = OllamaEmbeddings(
+            base_url='http://localhost:11434/', 
+            model="nomic-embed-text", 
+            show_progress=True
         )
+        self.llm = Ollama(model=self.model_name)
 
-    file_upload = col1.file_uploader(
-        "Upload a PDF file ↓", type="pdf", accept_multiple_files=False
-    )
-
-    if file_upload:
-        st.session_state["file_upload"] = file_upload
-        if st.session_state["vector_db"] is None:
-            st.session_state["vector_db"] = create_vector_db(file_upload)
-        pdf_pages = extract_all_pages_as_images(file_upload)
-        st.session_state["pdf_pages"] = pdf_pages
-
-        zoom_level = col1.slider(
-            "Zoom Level", min_value=100, max_value=1000, value=700, step=50
+    def create_vector_db(self, file_path: str, chunk_size: int = 500, chunk_overlap: int = 100) -> Chroma:
+        """
+        Create vector database from PDF
+        
+        Args:
+            file_path (str): Path to PDF file
+            chunk_size (int): Size of text chunks
+            chunk_overlap (int): Overlap between chunks
+        
+        Returns:
+            Chroma: Vector database
+        """
+        start_time = time.time()
+        st.sidebar.info("📊 Processing Document...")
+        
+        # Document Loading
+        loader = PyPDFLoader(file_path)
+        pages = loader.load_and_split()
+        st.sidebar.info(f"✅ Loaded {len(pages)} pages")
+        
+        # Text Splitting
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size, 
+            chunk_overlap=chunk_overlap
         )
+        chunks = text_splitter.split_documents(pages)
+        st.sidebar.info(f"🧩 Split into {len(chunks)} chunks")
+        
+        # Vector Store Creation
+        vector_db = Chroma.from_documents(
+            documents=chunks, 
+            embedding=self.embeddings,
+            collection_name="pdf_rag_collection"
+        )
+        
+        end_time = time.time()
+        st.sidebar.success(f"🌟 Vector DB Created in {end_time - start_time:.2f} seconds")
+        
+        return vector_db
 
-        with col1:
-            with st.container(height=410, border=True):
-                for page_image in pdf_pages:
-                    st.image(page_image, width=zoom_level)
+    def generate_multi_query(self, question: str, num_queries: int = 3) -> List[str]:
+        """
+        Generate multiple query variants
+        
+        Args:
+            question (str): Original user question
+            num_queries (int): Number of query variants to generate
+        
+        Returns:
+            List[str]: Generated query variants
+        """
+        multi_query_prompt = PromptTemplate(
+            input_variables=["question"],
+            template=f"""Generate {num_queries} different ways to ask the same question 
+            that might help retrieve more comprehensive context:
+            Original Question: {{question}}"""
+        )
+        
+        query_generator = multi_query_prompt | self.llm | StrOutputParser()
+        multi_queries = query_generator.invoke({"question": question}).split('\n')
+        
+        return [q.strip() for q in multi_queries if q.strip()]
 
-    delete_collection = col1.button("⚠️ Delete collection", type="secondary")
+    def retrieve_context(self, vector_db: Chroma, queries: List[str], top_k: int = 3) -> List[Dict[str, Any]]:
+        """
+        Retrieve context for multiple queries
+        
+        Args:
+            vector_db (Chroma): Vector database
+            queries (List[str]): List of queries
+            top_k (int): Number of top similar documents to retrieve
+        
+        Returns:
+            List[Dict[str, Any]]: Retrieved context documents
+        """
+        retriever = vector_db.as_retriever(search_kwargs={"k": top_k})
+        
+        all_contexts = []
+        for query in queries:
+            context_docs = retriever.get_relevant_documents(query)
+            all_contexts.extend(context_docs)
+        
+        # Remove duplicates while preserving order
+        unique_contexts = []
+        seen = set()
+        for doc in all_contexts:
+            if doc.page_content not in seen:
+                unique_contexts.append(doc)
+                seen.add(doc.page_content)
+        
+        return unique_contexts
 
-    if delete_collection:
-        delete_vector_db(st.session_state["vector_db"])
+    def generate_response(self, question: str, context: List[Dict[str, Any]]) -> Generator[str, None, None]:
+        """
+        Generate response using retrieved context
+        
+        Args:
+            question (str): User's question
+            context (List[Dict[str, Any]]): Retrieved context documents
+        
+        Yields:
+            str: Response chunks
+        """
+        context_text = "\n\n".join([doc.page_content for doc in context])
+        
+        response_template = """Answer the question based ONLY on the following context:
+        Context:
+        {context}
 
-    with col2:
-        message_container = st.container(height=500, border=True)
+        Question: {question}
 
-        for message in st.session_state["messages"]:
-            avatar = "🤖" if message["role"] == "assistant" else "😎"
-            with message_container.chat_message(message["role"], avatar=avatar):
-                st.markdown(message["content"])
+        Rules:
+        - Be concise and direct
+        - If the answer is not in the context, say "I cannot find the answer in the provided context."
+        - Cite the sources (page numbers) where you found the information
+        """
+        
+        prompt = ChatPromptTemplate.from_template(response_template)
+        
+        chain = (
+            {"context": lambda x: context_text, "question": RunnablePassthrough()}
+            | prompt
+            | self.llm
+        )
+        
+        response_chunks = ""
+        for chunk in chain.stream(question):
+            response_chunks += chunk
+            yield chunk
 
-        if prompt := st.chat_input("Enter a prompt here..."):
-            try:
-                st.session_state["messages"].append({"role": "user", "content": prompt})
-                message_container.chat_message("user", avatar="😎").markdown(prompt)
-
-                with message_container.chat_message("assistant", avatar="🤖"):
-                    with st.spinner(":green[processing...]"):
-                        if st.session_state["vector_db"] is not None:
-                            response = process_question(
-                                prompt, st.session_state["vector_db"], selected_model
-                            )
-                            st.markdown(response)
-                        else:
-                            st.warning("Please upload a PDF file first.")
-
-                if st.session_state["vector_db"] is not None:
-                    st.session_state["messages"].append(
-                        {"role": "assistant", "content": response}
+def main():
+    st.title("🧠 Q & A Retrieval System")
+    
+    # Sidebar for configuration
+    st.sidebar.header("🔧 Configuration")
+    model_options = ollama.list().models
+    selected_model = st.sidebar.selectbox(
+        "Select LLM Model", 
+        [m.model for m in model_options]
+    )
+    
+    # File Uploader
+    uploaded_file = st.file_uploader(
+        "📄 Upload PDF", 
+        type=['pdf'], 
+        help="Upload a PDF to start exploring"
+    )
+    
+    if uploaded_file:
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(uploaded_file.getvalue())
+            temp_file_path = temp_file.name
+        
+        # Initialize RAG Processor
+        rag_processor = RAGProcessor(model_name=selected_model)
+        
+        # Create Vector DB
+        vector_db = rag_processor.create_vector_db(temp_file_path)
+        
+        # PDF Preview
+        st.subheader("📖 PDF Preview")
+        with pdfplumber.open(temp_file_path) as pdf:
+            first_page = pdf.pages[0]
+            img = first_page.to_image(resolution=200)
+            st.image(img.original, caption="First Page Preview", use_column_width=True)
+        
+        # Query Interface
+        st.subheader("❓ Ask a Question")
+        user_question = st.text_input("Enter your question about the document")
+        
+        if user_question:
+            # Expander for showing queries and retrieved context
+            with st.expander("🔍 Query Exploration"):
+                st.write("### 🧩 Generated Query Variants")
+                multi_queries = rag_processor.generate_multi_query(user_question)
+                for i, query in enumerate(multi_queries, 1):
+                    st.info(f"Query {i}: {query}")
+                
+                st.write("### 📄 Retrieved Context")
+                retrieved_context = rag_processor.retrieve_context(vector_db, multi_queries)
+                for i, doc in enumerate(retrieved_context, 1):
+                    st.text_area(
+                        f"Context Snippet {i}", 
+                        value=doc.page_content, 
+                        height=100
                     )
+            
+            # Response Generation
+            st.subheader("💬 Response")
+            response_placeholder = st.empty()
+            
+            full_response = ""
+            for chunk in rag_processor.generate_response(user_question, retrieved_context):
+                full_response += chunk
+                response_placeholder.markdown(full_response)
+        
+        # Clean up temporary file
+        os.unlink(temp_file_path)
 
-            except Exception as e:
-                st.error(e, icon="⛔️")
-                logger.error(f"Error processing prompt: {e}")
-        else:
-            if st.session_state["vector_db"] is None:
-                st.warning("Upload a PDF file to begin chat...")
-
-
-if __name__ == "__main__":
+if _name_ == "_main_":
     main()
