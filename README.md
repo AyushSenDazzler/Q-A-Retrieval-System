@@ -65,6 +65,8 @@ Download and install Ollama from [ollama.com](https://ollama.com/)
 
 ### 4. Pull Required Models
 
+Attach shell by right clicking on ollama's container in docker or similar option in docker application, then run these commands.
+
 ```bash
 # Text Embedding Models
 ollama pull nomic-embed-text
