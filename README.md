@@ -60,13 +60,7 @@ pip install -r requirements.txt
    ollama run
    ```
 
-### 3. Install and Set Up Ollama
 
-1. **Download and install Ollama** from [ollama.com](https://ollama.com/).
-2. Once Ollama is installed, run **Ollama** locally to serve the **Llama 3** model:
-
-   ```bash
-   ollama run
   
 
 ### 4. Running the Application
