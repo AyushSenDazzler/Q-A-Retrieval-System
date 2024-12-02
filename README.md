@@ -50,3 +50,76 @@ Clone this repository and install the required dependencies via `pip`:
 git clone https://github.com/yourusername/ollama-pdf-rag-streamlit.git
 cd ollama-pdf-rag-streamlit
 pip install -r requirements.txt
+
+### 3. Install and Set Up Ollama
+
+1. **Download and install Ollama** from [ollama.com](https://ollama.com/).
+2. Once Ollama is installed, run **Ollama** locally to serve the **Llama 3** model:
+
+   ```bash
+   ollama run
+
+```
+### 3. Install and Set Up Ollama
+
+1. **Download and install Ollama** from [ollama.com](https://ollama.com/).
+2. Once Ollama is installed, run **Ollama** locally to serve the **Llama 3** model:
+
+   ```bash
+   ollama run
+  
+
+### 4. Running the Application
+
+Once everything is set up, you can run the Streamlit app with the following command:
+
+```bash
+streamlit run app.py
+```
+## 🧑‍💻 Usage
+
+### 1. Upload a PDF
+- Click the **Upload PDF** button to upload any PDF document. The app will process the document, split it into chunks, and store the chunks in a vector database.
+
+### 2. Select a Model
+- After uploading, select one of the available **Ollama models** (e.g., **Llama 3**). The application will use this model to process your queries and generate responses.
+
+### 3. Ask Questions
+- Once the PDF is processed, type your question into the chat input box. The system will query the vector database for relevant document chunks and provide an answer based on the PDF content.
+
+### 4. View PDF Pages
+- You can view the uploaded PDF pages as images. Zoom in or out using the slider to better view the content.
+
+### 5. Delete Vector Database
+- If you want to clear the database or reset the application, simply click on the **Delete Collection** button to remove the vector database.
+
+---
+
+## 📊 How It Works
+
+### **Step 1: PDF Processing**
+- When a PDF is uploaded, the system extracts the text from it and splits the text into manageable chunks. These chunks are then embedded into vector representations using **OllamaEmbeddings**.
+
+### **Step 2: Vector Database**
+- The **Chroma** vector store is used to store the embeddings of the document chunks. This allows for fast retrieval of the most relevant chunks based on the user's query.
+
+### **Step 3: Multi-query Retriever**
+- When a user asks a question, the **MultiQueryRetriever** generates alternative phrasing of the question, allowing for more accurate retrieval from the vector store. This helps overcome limitations of traditional similarity searches.
+
+### **Step 4: Generating Answers**
+- The retrieved chunks are passed to the language model (**Llama 3**) to generate the answer based only on the relevant context from the document.
+
+### **Step 5: RAG (Retrieval-Augmented Generation)**
+- The system combines **document retrieval** and **generation** to provide a contextualized response. The answer is grounded in the document content, and the relevant excerpts used in the response are shown to the user.
+
+---
+
+
+
+
+## 🔗 Links
+
+- [Streamlit Documentation](https://docs.streamlit.io/)
+- [Ollama Documentation](https://ollama.com/docs)
+- [LangChain Documentation](https://langchain.com/docs/)
+- [Chroma Documentation](https://www.trychroma.com/docs)
